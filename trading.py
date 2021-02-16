@@ -1,8 +1,33 @@
 import cbpro
 import sys
+import json
 from datetime import datetime, timedelta
 
 from portfolio import Order, Portfolio
+
+class PriceTrackerWsClient(cbpro.WebsocketClient):
+    def start(self, url, products):
+        self.url = url
+        self.products = list(products)
+        self.channels = ['ticker']
+        self.prices = {}
+        print(f"Subscribing to {len(self.products)} products tickers")
+        super().start()
+
+    def on_message(self, msg):
+        if "price" in msg:
+            self.prices[msg['product_id']] = 1/float(msg['price'])
+            #print(f"{msg['product_id']}: {self.prices[msg['product_id']]:.5f}")
+
+    def on_close(self):
+        print("-- Goodbye! --")
+
+    def get_price(self, product_id):
+        if product_id in self.prices:
+            return self.prices[product_id]
+        else: 
+            return -1
+
 
 class TradingEngine:
     def __init__(self, key, secret, passphrase, base_currency, max_buy_products, 
@@ -105,6 +130,9 @@ class TradingEngine:
         old_now = datetime.today() - timedelta(days=weeks*7)
         tradable_products = self.get_tradable_products()
 
+        wsClient = PriceTrackerWsClient()
+        wsClient.start("wss://ws-feed.pro.coinbase.com/", tradable_products.keys())
+
         for _ in range(0, weeks+1):
             start = old_now - timedelta(days=7)
             end = old_now
@@ -115,16 +143,15 @@ class TradingEngine:
             trends = self.get_last_market_trends(tradable_products, start, end, limit_products=5)
             ordering_products = self.get_buy_quotes(trends, tradable_products)
             for pid in ordering_products:
-                curr_value = self.public_client.get_product_ticker(pid)
-                if "size" not in curr_value or "price" not in curr_value:
-                    print(f"Ticker doesnt contains needed information {curr_value}, skipping order!")
+                unit_value = wsClient.get_price(pid)
+                if unit_value < 0:
+                    print(f"Price not yet determined, skipping order!")
                     continue
-                unit_value = float(curr_value['size'])/float(curr_value['price'])
                 order = Order(pid)
                 order.buy(ordering_products[pid], unit_value)
                 portfolio.add(order)
         print(portfolio.summary())
-
+        wsClient.close()
             #break
 
     def execute(self, order):
