@@ -14,12 +14,13 @@ base_currency = "EUR"
 # recurring buy amount
 buy_amount = 50
 # how many products should we buy at once?
-max_products = 5
+max_buy_products = 5
+simulation = True
 
 with open('config.json') as config_file:
     data = json.load(config_file)
 
-trading = TradingEngine(data['key'], data['b64secret'], data['passphrase'], base_currency)
+trading = TradingEngine(data['key'], data['b64secret'], data['passphrase'], base_currency, max_buy_products, buy_amount, trading_interval_days)
 
 coinbase_account = trading.get_account()
 
@@ -35,15 +36,19 @@ tradable_products = trading.get_tradable_products()
 # print(tradable_products)
 print(f"Found {len(tradable_products)} tradable products")
 
-sorted_market_trend = trading.get_market_trends(
-    tradable_products, limit_products, trading_interval_days)
+if simulation:
+    trading.simulate_period(3)
+else:
+    # FUCKED UP
+    sorted_market_trend = trading.get_last_market_trends(
+        tradable_products, limit_products, trading_interval_days,)
 
-print(f"Selecting {max_products} most gainable products")
-ordering_products = dict(itertools.islice(
-    sorted_market_trend.items(), max_products))
+    print(f"Selecting {max_products} most gainable products")
+    ordering_products = dict(itertools.islice(
+        sorted_market_trend.items(), max_products))
 
-for pid in ordering_products:
-    print(f"{pid}: {ordering_products[pid]:.2f}%")
+    for pid in ordering_products:
+        print(f"{pid}: {ordering_products[pid]:.2f}%")
 
-orders = trading.get_buy_quotes(buy_amount, ordering_products, tradable_products)
-trading.execute_orders(orders)
+    orders = trading.get_buy_quotes(buy_amount, ordering_products, tradable_products)
+    trading.execute_orders(orders)
