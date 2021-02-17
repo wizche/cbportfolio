@@ -1,10 +1,15 @@
 import cbpro
+import enum
 import sys
 import json
 import os
 from datetime import datetime, timedelta
 
 from portfolio import Order, Portfolio
+
+class Strategy(enum.Enum):
+   TopGainers = 1
+   TopLosers = 2
 
 class PriceTrackerWsClient(cbpro.WebsocketClient):
     def start(self, url, products):
@@ -32,13 +37,14 @@ class PriceTrackerWsClient(cbpro.WebsocketClient):
 
 class TradingEngine:
     def __init__(self, key, secret, passphrase, base_currency, max_buy_products, 
-    buy_amount):
+    buy_amount, strategy):
         self.public_client = cbpro.PublicClient()
         self.auth_client = cbpro.AuthenticatedClient(key, secret, passphrase,
                                                 api_url="https://api-public.sandbox.pro.coinbase.com")
         self.base_currency = base_currency
         self.max_buy_products = max_buy_products
         self.buy_amount = buy_amount
+        self.strategy = strategy
 
     def get_account(self):
         coinbase_accounts = self.auth_client.get_coinbase_accounts()
@@ -60,41 +66,33 @@ class TradingEngine:
     def get_last_market_trends(self, tradable_products, start, end, limit_products = -1):
         market_trend = {}
         for _, pid in enumerate(tradable_products):
-            p = tradable_products[pid]
-            if limit_products > 0 and len(market_trend) >= limit_products:
-                break
-
-            tickers = self.public_client.get_product_historic_rates(
-                p['id'], start=start, end=end, granularity=86400)
-            '''
-            Each bucket is an array of the following information:
-                time bucket start time
-                low lowest price during the bucket interval
-                high highest price during the bucket interval
-                open opening price (first trade) in the bucket interval
-                close closing price (last trade) in the bucket interval
-                volume volume of trading activity during the bucket interval
-            '''
-            # for tick in tickers:
-            #    print(f"{datetime.fromtimestamp(tick[0]).isoformat()}: {tick[2]}")
-            if len(tickers) < 2:
-                #print(f"Not enough historical information ({len(tickers)}) for this product, skipping!")
+            p = tradable_products[pid]            
+            sts = str(start.timestamp())
+            ets = str(end.timestamp())
+            
+            if sts not in self.tickers_cache[pid] or ets not in self.tickers_cache[pid]:
+                print(f"Unable to compute trends for {pid}, missing ticker informations")
                 continue
-            now = tickers[0]
-            old = tickers[len(tickers)-1]
-            gain = (now[2]-old[2])/now[2] * 100.0
+
+            now = self.tickers_cache[pid][ets]
+            old = self.tickers_cache[pid][sts]
+            gain = (now["close"]-old["close"])/now["close"] * 100.0
             market_trend[p['id']] = gain
 
         # sort by gain
-        sorted_market_trend = dict(
-            sorted(market_trend.items(), key=lambda item: item[1], reverse=True))
+        sorted_list = sorted(market_trend.items(), key=lambda item: item[1], reverse=self.strategy == Strategy.TopGainers)
+        if limit_products > 0 and len(market_trend) >= limit_products:
+            sorted_list = sorted_list[:limit_products]
+        sorted_market_trend = dict(sorted_list)
+
+        print(sorted_market_trend)
+
         return sorted_market_trend
     
     def get_buy_quotes(self, selected_prods, tradable_products):
         orders = {}
         ratio = sum(abs(v) for v in selected_prods.values())
         top = ()
-        print(f"Ratio: {ratio}")
         for p in selected_prods:
             val = abs(self.buy_amount * (selected_prods[p]/ratio * 100.0) / 100.0)
             if len(top) == 0 or val > top[1]:
@@ -124,46 +122,60 @@ class TradingEngine:
             exec_orders.append(order)
         return exec_orders
 
-    def cached_historical_data(self, products, begin, end):
-        cache = {}
-        f = open("cache.json", "w+")
-        if f.tell() > 0:
+    def prepare_data(self, products, begin, end):
+        self.tickers_cache = {}
+        cache_file = "cache.json"
+        if os.path.exists(cache_file) and os.path.getsize(cache_file) > 0:
             print(f"Reading cache from file")
-            cache = json.loads(f.read())
-
+            with open(cache_file, "r") as f:
+                self.tickers_cache = json.loads(f.read())
 
         for p in products:
             print(f"Lookup {p} historical data {begin.isoformat()}-{end.isoformat()}")
             begin = begin.replace(hour=0, minute=0, second=0, microsecond=0)
             end = end.replace(hour=0, minute=0, second=0, microsecond=0)
 
-            if p not in cache:
-                cache[p] = {}
+            if p not in self.tickers_cache:
+                #print(f"Product {p} not in self.tickers_cache!")
+                self.tickers_cache[p] = {}
             else:
-                if begin in cache[p] and end in cache[p]:
+                begin_ts = str(begin.timestamp()) 
+                end_ts = str(end.timestamp())
+                if begin_ts in self.tickers_cache[p] and end_ts in self.tickers_cache[p]:
                     print(f"Product {p} already in cache!")
                     continue
+                else:
+                    pass
+                    #print(f"Missing timestamps for {p} {begin_ts} - {end_ts}")
+                    #print(cache[p])
+                
             
             tickers = self.public_client.get_product_historic_rates(
                     p, start=begin, end=end, granularity=86400)
 
+            diff = end.date()-begin.date()
+            if len(tickers) < diff.days:
+                print(f"Missing ticks {len(tickers)} instead of {diff.days}")
+                continue
             for t in tickers:
-                dt = datetime.fromtimestamp(t[0])
+                #print(t)
+                dt = datetime.fromtimestamp(int(t[0]))
                 dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-
-                cache[p][dt.timestamp()] = {
+                timestamp = str(dt.timestamp())
+                self.tickers_cache[p][timestamp] = {
                     'low': t[1],
                     'high': t[2],
                     'open': t[3],
                     'close': t[4],
                     'volume': t[5],
                 } 
-        f.write(json.dumps(cache))
-        f.close()
+
+        with open(cache_file, "w") as f:
+            f.write(json.dumps(self.tickers_cache))
         #print(cache)
 
     def simulate_period(self, trading_interval_days: int, periods: int):
-        portfolio = Portfolio()
+        portfolio = Portfolio(self.base_currency)
         begin = datetime.today() - timedelta(days=(periods*trading_interval_days))
 
         self.trading_interval_days = trading_interval_days
@@ -171,32 +183,29 @@ class TradingEngine:
         tradable_products = self.get_tradable_products()
         print(f"Found {len(tradable_products)} tradable products")
 
-        self.cached_historical_data(tradable_products, begin, datetime.today())
-        return
+        self.prepare_data(tradable_products, begin, datetime.today())
 
-        wsClient = PriceTrackerWsClient()
-        wsClient.start("wss://ws-feed.pro.coinbase.com/", tradable_products.keys())
+        for p in range(periods, 0, -1):
+            start = datetime.now() - timedelta(days=p*trading_interval_days)
+            start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + timedelta(days=trading_interval_days)
+            end = end.replace(hour=0, minute=0, second=0, microsecond=0)
+            print(f"Computing period {start.isoformat()} - {end.isoformat()}")
 
-        for _ in range(0, weeks+1):
-            start = old_now - timedelta(days=7)
-            end = old_now
-            period = (start.isoformat(), end.isoformat())
-            periods.insert(0, period)
-            old_now = end + timedelta(days=7)
-            print(f"Computing period {period[0]} - {period[1]}")
             trends = self.get_last_market_trends(tradable_products, start, end, limit_products=5)
-            ordering_products = self.get_buy_quotes(trends, tradable_products)
+
+            ordering_products = self.get_buy_quotes(trends, tradable_products)            
+            print(ordering_products)
+
             for pid in ordering_products:
-                unit_value = wsClient.get_price(pid)
-                if unit_value < 0:
-                    print(f"Price not yet determined, skipping order!")
-                    continue
                 order = Order(pid)
-                order.buy(ordering_products[pid], unit_value)
+                # ticker information contains value for a unit of cryptocurrency
+                unit_value = 1.0/self.tickers_cache[pid][str(end.timestamp())]["close"]
+                order.buy(end, ordering_products[pid], unit_value)
                 portfolio.add(order)
-        print(portfolio.summary())
-        wsClient.close()
-            #break
+
+        print(portfolio.summary(self.tickers_cache))
+        print(f"Strategy used: {self.strategy.name} across last {periods} periods of {trading_interval_days} days each")
 
     def execute(self, order):
         pass

@@ -3,7 +3,7 @@ import json
 import sys
 import itertools
 
-from trading import TradingEngine
+from trading import TradingEngine, Strategy
 
 # this account is the one using to transfer founds
 trading_interval_days = 7
@@ -20,7 +20,7 @@ simulation = True
 with open('config.json') as config_file:
     data = json.load(config_file)
 
-trading = TradingEngine(data['key'], data['b64secret'], data['passphrase'], base_currency, max_buy_products, buy_amount)
+trading = TradingEngine(data['key'], data['b64secret'], data['passphrase'], base_currency, max_buy_products, buy_amount, Strategy.TopGainers)
 
 coinbase_account = trading.get_account()
 
@@ -36,7 +36,7 @@ print(
 # print(tradable_products)
 
 if simulation:
-    trading.simulate_period(trading_interval_days, 10)
+    trading.simulate_period(trading_interval_days, 30)
 else:
     # FUCKED UP
     sorted_market_trend = trading.get_last_market_trends(
