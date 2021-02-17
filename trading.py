@@ -4,6 +4,16 @@ import sys
 import json
 import os
 from datetime import datetime, timedelta
+import logging
+from rich import print
+from rich.logging import RichHandler
+
+FORMAT = "%(message)s"
+logging.basicConfig(
+    level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+)
+
+log = logging.getLogger("trading")
 
 from portfolio import Order, Portfolio
 
@@ -17,16 +27,16 @@ class PriceTrackerWsClient(cbpro.WebsocketClient):
         self.products = list(products)
         self.channels = ['ticker']
         self.prices = {}
-        print(f"Subscribing to {len(self.products)} products tickers")
+        log.info(f"Subscribing to {len(self.products)} products tickers")
         super().start()
 
     def on_message(self, msg):
         if "price" in msg:
             self.prices[msg['product_id']] = 1/float(msg['price'])
-            #print(f"{msg['product_id']}: {self.prices[msg['product_id']]:.5f}")
+            #log.info(f"{msg['product_id']}: {self.prices[msg['product_id']]:.5f}")
 
     def on_close(self):
-        print("-- Goodbye! --")
+        log.info("-- Goodbye! --")
 
     def get_price(self, product_id):
         if product_id in self.prices:
@@ -71,7 +81,7 @@ class TradingEngine:
             ets = str(end.timestamp())
             
             if sts not in self.tickers_cache[pid] or ets not in self.tickers_cache[pid]:
-                print(f"Unable to compute trends for {pid}, missing ticker informations")
+                log.warn(f"Unable to compute trends for {pid}, missing ticker informations")
                 continue
 
             now = self.tickers_cache[pid][ets]
@@ -84,9 +94,6 @@ class TradingEngine:
         if limit_products > 0 and len(market_trend) >= limit_products:
             sorted_list = sorted_list[:limit_products]
         sorted_market_trend = dict(sorted_list)
-
-        print(sorted_market_trend)
-
         return sorted_market_trend
     
     def get_buy_quotes(self, selected_prods, tradable_products):
@@ -98,7 +105,7 @@ class TradingEngine:
             if len(top) == 0 or val > top[1]:
                 top = (p, val)
             orders[p] = val
-            #print(f"orders[{p}]: {orders[p]}")
+            #log.info(f"orders[{p}]: {orders[p]}")
 
         while True:
             untouched = True
@@ -106,7 +113,7 @@ class TradingEngine:
                 min_value = float(tradable_products[p]['min_market_funds'])
                 if orders[p] < min_value:
                     orders[top[0]] += orders[p]
-                    print(f"{p} too small ({orders[p]:.2f} < {min_value:.2f}), adding to top product {top[0]} = {orders[top[0]]}")
+                    log.info(f"{p} too small ({orders[p]:.2f} < {min_value:.2f}), adding to top product {top[0]} = {orders[top[0]]:.2f}")
                     orders.pop(p)
                     untouched = False
             if untouched: break
@@ -115,10 +122,10 @@ class TradingEngine:
     def execute_orders(self, orders):
         exec_orders = []
         for o in orders:
-            print(f"Executing order for {o}: {orders[o]} {self.base_currency}")
+            log.info(f"Executing order for {o}: {orders[o]} {self.base_currency}")
             order = self.auth_client.place_market_order(
                 product_id=o, side='buy', funds=orders[o])
-            print(order)
+            log.info(order)
             exec_orders.append(order)
         return exec_orders
 
@@ -126,28 +133,28 @@ class TradingEngine:
         self.tickers_cache = {}
         cache_file = "cache.json"
         if os.path.exists(cache_file) and os.path.getsize(cache_file) > 0:
-            print(f"Reading cache from file")
+            log.info(f"Reading cache from file")
             with open(cache_file, "r") as f:
                 self.tickers_cache = json.loads(f.read())
 
         for p in products:
-            print(f"Lookup {p} historical data {begin.isoformat()}-{end.isoformat()}")
+            log.info(f"Lookup {p} historical data {begin.isoformat()}-{end.isoformat()}")
             begin = begin.replace(hour=0, minute=0, second=0, microsecond=0)
             end = end.replace(hour=0, minute=0, second=0, microsecond=0)
 
             if p not in self.tickers_cache:
-                #print(f"Product {p} not in self.tickers_cache!")
+                #log.info(f"Product {p} not in self.tickers_cache!")
                 self.tickers_cache[p] = {}
             else:
                 begin_ts = str(begin.timestamp()) 
                 end_ts = str(end.timestamp())
                 if begin_ts in self.tickers_cache[p] and end_ts in self.tickers_cache[p]:
-                    print(f"Product {p} already in cache!")
+                    log.info(f"Product {p} already in cache!")
                     continue
                 else:
                     pass
-                    #print(f"Missing timestamps for {p} {begin_ts} - {end_ts}")
-                    #print(cache[p])
+                    #log.info(f"Missing timestamps for {p} {begin_ts} - {end_ts}")
+                    #log.info(cache[p])
                 
             
             tickers = self.public_client.get_product_historic_rates(
@@ -155,10 +162,10 @@ class TradingEngine:
 
             diff = end.date()-begin.date()
             if len(tickers) < diff.days:
-                print(f"Missing ticks {len(tickers)} instead of {diff.days}")
+                log.info(f"Missing ticks {len(tickers)} instead of {diff.days}")
                 continue
             for t in tickers:
-                #print(t)
+                #log.info(t)
                 dt = datetime.fromtimestamp(int(t[0]))
                 dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
                 timestamp = str(dt.timestamp())
@@ -172,7 +179,7 @@ class TradingEngine:
 
         with open(cache_file, "w") as f:
             f.write(json.dumps(self.tickers_cache))
-        #print(cache)
+        #log.info(cache)
 
     def simulate_period(self, trading_interval_days: int, periods: int):
         portfolio = Portfolio(self.base_currency)
@@ -195,7 +202,7 @@ class TradingEngine:
             trends = self.get_last_market_trends(tradable_products, start, end, limit_products=5)
 
             ordering_products = self.get_buy_quotes(trends, tradable_products)            
-            print(ordering_products)
+            #print(ordering_products)
 
             for pid in ordering_products:
                 order = Order(pid)
