@@ -1,6 +1,7 @@
 import cbpro
 import sys
 import json
+import os
 from datetime import datetime, timedelta
 
 from portfolio import Order, Portfolio
@@ -31,14 +32,13 @@ class PriceTrackerWsClient(cbpro.WebsocketClient):
 
 class TradingEngine:
     def __init__(self, key, secret, passphrase, base_currency, max_buy_products, 
-    buy_amount, trading_interval_days):
+    buy_amount):
         self.public_client = cbpro.PublicClient()
         self.auth_client = cbpro.AuthenticatedClient(key, secret, passphrase,
                                                 api_url="https://api-public.sandbox.pro.coinbase.com")
         self.base_currency = base_currency
         self.max_buy_products = max_buy_products
         self.buy_amount = buy_amount
-        self.trading_interval_days = trading_interval_days
 
     def get_account(self):
         coinbase_accounts = self.auth_client.get_coinbase_accounts()
@@ -124,11 +124,55 @@ class TradingEngine:
             exec_orders.append(order)
         return exec_orders
 
-    def simulate_period(self, weeks: int):
+    def cached_historical_data(self, products, begin, end):
+        cache = {}
+        f = open("cache.json", "w+")
+        if f.tell() > 0:
+            print(f"Reading cache from file")
+            cache = json.loads(f.read())
+
+
+        for p in products:
+            print(f"Lookup {p} historical data {begin.isoformat()}-{end.isoformat()}")
+            begin = begin.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = end.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            if p not in cache:
+                cache[p] = {}
+            else:
+                if begin in cache[p] and end in cache[p]:
+                    print(f"Product {p} already in cache!")
+                    continue
+            
+            tickers = self.public_client.get_product_historic_rates(
+                    p, start=begin, end=end, granularity=86400)
+
+            for t in tickers:
+                dt = datetime.fromtimestamp(t[0])
+                dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+                cache[p][dt.timestamp()] = {
+                    'low': t[1],
+                    'high': t[2],
+                    'open': t[3],
+                    'close': t[4],
+                    'volume': t[5],
+                } 
+        f.write(json.dumps(cache))
+        f.close()
+        #print(cache)
+
+    def simulate_period(self, trading_interval_days: int, periods: int):
         portfolio = Portfolio()
-        periods = []
-        old_now = datetime.today() - timedelta(days=weeks*7)
+        begin = datetime.today() - timedelta(days=(periods*trading_interval_days))
+
+        self.trading_interval_days = trading_interval_days
+
         tradable_products = self.get_tradable_products()
+        print(f"Found {len(tradable_products)} tradable products")
+
+        self.cached_historical_data(tradable_products, begin, datetime.today())
+        return
 
         wsClient = PriceTrackerWsClient()
         wsClient.start("wss://ws-feed.pro.coinbase.com/", tradable_products.keys())

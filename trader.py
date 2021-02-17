@@ -20,7 +20,7 @@ simulation = True
 with open('config.json') as config_file:
     data = json.load(config_file)
 
-trading = TradingEngine(data['key'], data['b64secret'], data['passphrase'], base_currency, max_buy_products, buy_amount, trading_interval_days)
+trading = TradingEngine(data['key'], data['b64secret'], data['passphrase'], base_currency, max_buy_products, buy_amount)
 
 coinbase_account = trading.get_account()
 
@@ -32,12 +32,11 @@ if coinbase_account is None:
 print(
     f"Coinbase account balance {coinbase_account['balance']} {coinbase_account['currency']}")
 
-tradable_products = trading.get_tradable_products()
+#tradable_products = trading.get_tradable_products()
 # print(tradable_products)
-print(f"Found {len(tradable_products)} tradable products")
 
 if simulation:
-    trading.simulate_period(3)
+    trading.simulate_period(trading_interval_days, 10)
 else:
     # FUCKED UP
     sorted_market_trend = trading.get_last_market_trends(
