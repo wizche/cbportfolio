@@ -95,9 +95,15 @@ class TradingEngine:
         elif self.strategy == Strategy.TopLosers:
             reverse = False
         else:
-            self.last_strategy_flag = not self.last_strategy_flag
-            reverse = self.last_strategy_flag
-
+            strategy_file = "strategy.lock"
+            if os.path.exists(strategy_file):
+                reverse = True
+                os.remove(strategy_file)
+            else:
+                reverse = False
+                open(strategy_file, 'a').close()
+            
+        print(f"Strategy reverse flag {reverse}")
         # sort by gain
         sorted_list = sorted(market_trend.items(),
                              key=lambda item: item[1], reverse=reverse)
@@ -226,6 +232,7 @@ class TradingEngine:
         return math.trunc(value * factor) / factor
 
     def single_run(self, interval: int):
+        print(f"**** Executing run {datetime.now()} - {self.buy_amount} {self.base_currency} / {interval} days interval")
         begin = datetime.today() - timedelta(days=interval)
         begin = begin.replace(hour=0, minute=0, second=0, microsecond=0)
         end = datetime.today()

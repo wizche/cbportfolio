@@ -4,3 +4,4 @@ config.json
 cache.json
 config.prod.json
 config.sandbox.json
+strategy.lock
