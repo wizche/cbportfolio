@@ -2,8 +2,8 @@
 """Trader.
 
 Usage:
-  trader.py simulate [--interval=<interval>] [--periods=<periods>] [--strategy=<strategy>] [--config=<configfile>]
-  trader.py run [--config=<configfile>] [--interval=<interval>] [--strategy=<strategy>]
+  trader.py simulate [--amount=<amount>] [--config=<configfile>] [--interval=<interval>] [--periods=<periods>] [--strategy=<strategy>] [--limit=<limit>]
+  trader.py run [--amount=<amount>] [--config=<configfile>] [--interval=<interval>] [--strategy=<strategy>] [--limit=<limit>]
   trader.py (-h | --help)
   trader.py --version
 
@@ -14,6 +14,8 @@ Options:
   --periods=<periods>       How many periods (of interval) [default: 20]
   --strategy=<strategy>     Strategy (gainer|loser|mixed) [default: gainer]
   --config=<configfile>     JSON config file [default: config.sandbox.json]
+  --amount=<amount>         Amount to buy [default: 50]
+  --limit=<limit>           Max products to buy, -1 all of them [default: 10]
 """
 
 import json
@@ -23,15 +25,9 @@ from docopt import docopt
 
 from trading import TradingEngine, Strategy
 
-# how many products should considerate? (-1 for all of them)
-limit_products = 10
 # base currency (where the funds are taken from)
 base_currency = "EUR"
-# recurring buy amount
-buy_amount = 15
 # buy_amount = 0.0012 # 50 EUR -> BTC
-# how many products should we buy at once?
-max_buy_products = 2
 
 
 def strategy_from_option(strategy):
@@ -45,9 +41,9 @@ def strategy_from_option(strategy):
         raise RuntimeError(f"Unknown strategy {strategy}")
 
 
-def run(data, interval, strategy):
+def run(data, buy_amount, interval, strategy, limit_products):
     trading = TradingEngine(data['url'], data['key'], data['b64secret'], data['passphrase'],
-                            base_currency, max_buy_products, buy_amount, strategy, limit_products)
+                            base_currency, buy_amount, strategy, limit_products)
     coinbase_account = trading.get_account()
 
     if coinbase_account is None:
@@ -61,9 +57,9 @@ def run(data, interval, strategy):
     trading.single_run(interval)
 
 
-def simulate(data, interval, periods, strategy):
+def simulate(data, buy_amount, interval, periods, strategy, limit_products):
     trading = TradingEngine(data['url'], data['key'], data['b64secret'], data['passphrase'],
-                            base_currency, max_buy_products, buy_amount, strategy, limit_products)
+                            base_currency, buy_amount, strategy, limit_products)
 
     trading.simulate_period(interval, periods)
 
@@ -75,11 +71,11 @@ if __name__ == "__main__":
         data = json.load(config_file)
 
     if arguments["simulate"]:
-        simulate(data, int(arguments["--interval"]), int(
-            arguments["--periods"]), strategy_from_option(arguments["--strategy"]))
+        simulate(data, int(arguments["--amount"]), int(arguments["--interval"]), int(
+            arguments["--periods"]), strategy_from_option(arguments["--strategy"]), int(arguments["--limit"]))
     elif arguments["run"]:
-        run(data, int(arguments["--interval"]),
-            strategy_from_option(arguments["--strategy"]))
+        run(data, int(arguments["--amount"]), int(arguments["--interval"]),
+            strategy_from_option(arguments["--strategy"]), int(arguments["--limit"]))
     else:
         raise RuntimeError("Unknown mode")
 

@@ -42,13 +42,11 @@ class PriceTrackerWsClient(cbpro.WebsocketClient):
 
 
 class TradingEngine:
-    def __init__(self, api_url, key, secret, passphrase, base_currency, max_buy_products,
-                 buy_amount, strategy, limit_products):
+    def __init__(self, api_url, key, secret, passphrase, base_currency, buy_amount, strategy, limit_products):
         self.public_client = cbpro.PublicClient()
         self.auth_client = cbpro.AuthenticatedClient(key, secret, passphrase,
                                                      api_url=api_url)
         self.base_currency = base_currency
-        self.max_buy_products = max_buy_products
         self.buy_amount = buy_amount
         self.strategy = strategy
         self.portfolio = Portfolio(base_currency)
@@ -232,7 +230,7 @@ class TradingEngine:
         return math.trunc(value * factor) / factor
 
     def single_run(self, interval: int):
-        print(f"**** Executing run {datetime.now()} - {self.buy_amount} {self.base_currency} / {interval} days interval")
+        print(f"**** Executing run {datetime.now()} - {self.buy_amount} {self.base_currency} / {interval} days interval / {self.limit_products} limit")
         begin = datetime.today() - timedelta(days=interval)
         begin = begin.replace(hour=0, minute=0, second=0, microsecond=0)
         end = datetime.today()
