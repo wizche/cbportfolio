@@ -1,5 +1,6 @@
 import cbpro
 import enum
+import math
 import sys
 import json
 import os
@@ -41,11 +42,11 @@ class PriceTrackerWsClient(cbpro.WebsocketClient):
 
 
 class TradingEngine:
-    def __init__(self, key, secret, passphrase, base_currency, max_buy_products,
+    def __init__(self, api_url, key, secret, passphrase, base_currency, max_buy_products,
                  buy_amount, strategy, limit_products):
         self.public_client = cbpro.PublicClient()
         self.auth_client = cbpro.AuthenticatedClient(key, secret, passphrase,
-                                                     api_url="https://api-public.sandbox.pro.coinbase.com")
+                                                     api_url=api_url)
         self.base_currency = base_currency
         self.max_buy_products = max_buy_products
         self.buy_amount = buy_amount
@@ -131,12 +132,16 @@ class TradingEngine:
                     orig_value = orders[p]
                     orders[alternative] += orders[p]
                     print(
-                        f"{p} too small ({orig_value:.2f} < {min_value:.2f}), adding to next product {alternative} = {orders[alternative]:.2f} (min {float(tradable_products[alternative]['min_market_funds']):.2f})")
+                        f"{p} too small ({orig_value:.4f} < {min_value:.4f}), adding to next product {alternative} = {orders[alternative]:.4f} (min {float(tradable_products[alternative]['min_market_funds']):.4f})")
                     orders.pop(p)
                     untouched = False
             if untouched:
                 break
-        print(orders)
+        #print(orders)
+        # lets truncate all orders to the right quote increment
+        for p in orders:
+            orders[p] = self.round_to_increment(orders[p], float(tradable_products[p]["quote_increment"]))
+
         return orders
 
     def execute_orders(self, orders):
@@ -195,21 +200,58 @@ class TradingEngine:
                 print(f"Incomplete historical data for {p}")
 
             for t in tickers:
-                # print(t)
-                dt = datetime.fromtimestamp(int(t[0]))
-                dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-                timestamp = str(dt.timestamp())
-                self.tickers_cache[p][timestamp] = {
-                    'low': t[1],
-                    'high': t[2],
-                    'open': t[3],
-                    'close': t[4],
-                    'volume': t[5],
-                }
+                try:
+                    dt = datetime.fromtimestamp(int(t[0]))
+                    dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                    timestamp = str(dt.timestamp())
+                    self.tickers_cache[p][timestamp] = {
+                        'low': t[1],
+                        'high': t[2],
+                        'open': t[3],
+                        'close': t[4],
+                        'volume': t[5],
+                    }
+                except:
+                    print(t)
 
         with open(cache_file, "w") as f:
             f.write(json.dumps(self.tickers_cache))
         # print(cache)
+
+    def round_to_increment(self, value, increment):
+        s = '{:.16f}'.format(increment).split('.')[1]
+        zeros = len(s) - len(s.lstrip('0'))
+        zeros += 1
+        factor = 10.0 ** zeros
+        return math.trunc(value * factor) / factor
+
+    def single_run(self, interval: int):
+        begin = datetime.today() - timedelta(days=interval)
+        begin = begin.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = datetime.today()
+        end = end.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        tradable_products = self.get_tradable_products()
+        print(f"Found {len(tradable_products)} tradable products")
+        self.prepare_data(tradable_products, begin, end)
+        trends = self.get_last_market_trends(tradable_products, begin, end)  
+        ordering_products = self.get_buy_quotes(trends, tradable_products)
+
+        print("Trends:")
+        print("-------")
+        for t in trends:
+            print(f"{t.id}: {trends[t]:.2f}%")
+
+        print("\nExecuting orders:")
+        print("-------")
+        #print(tradable_products)
+        for p in ordering_products:
+            print(f"Executing {p.id} order {ordering_products[p]} {p.quote}")
+            order = self.auth_client.place_market_order(p.id, side="buy", funds=ordering_products[p])
+            if "id" in order:
+                print(f"Order {order['id']} confirmed!")
+            else:
+                print(f"Failed to execute order: {order}")
 
     def simulate_period(self, trading_interval_days: int, periods: int):
         begin = datetime.today() - timedelta(days=(periods*trading_interval_days))

@@ -3,7 +3,7 @@
 
 Usage:
   trader.py simulate [--interval=<interval>] [--periods=<periods>] [--strategy=<strategy>] [--config=<configfile>]
-  trader.py run
+  trader.py run [--config=<configfile>] [--interval=<interval>] [--strategy=<strategy>]
   trader.py (-h | --help)
   trader.py --version
 
@@ -13,7 +13,7 @@ Options:
   --interval=<interval>     Interval between buy [default: 7]
   --periods=<periods>       How many periods (of interval) [default: 20]
   --strategy=<strategy>     Strategy (gainer|loser|mixed) [default: gainer]
-  --config=<configfile>     JSON config file [default: config.json]
+  --config=<configfile>     JSON config file [default: config.sandbox.json]
 """
 
 import json
@@ -28,9 +28,11 @@ limit_products = 10
 # base currency (where the funds are taken from)
 base_currency = "EUR"
 # recurring buy amount
-buy_amount = 50
+buy_amount = 15
+# buy_amount = 0.0012 # 50 EUR -> BTC
 # how many products should we buy at once?
-max_buy_products = 5
+max_buy_products = 2
+
 
 def strategy_from_option(strategy):
     if strategy == "gainer":
@@ -42,10 +44,10 @@ def strategy_from_option(strategy):
     else:
         raise RuntimeError(f"Unknown strategy {strategy}")
 
-def simulate(data, interval, periods, strategy):
-    trading = TradingEngine(data['key'], data['b64secret'], data['passphrase'],
-                            base_currency, max_buy_products, buy_amount, strategy, limit_products)
 
+def run(data, interval, strategy):
+    trading = TradingEngine(data['url'], data['key'], data['b64secret'], data['passphrase'],
+                            base_currency, max_buy_products, buy_amount, strategy, limit_products)
     coinbase_account = trading.get_account()
 
     if coinbase_account is None:
@@ -55,6 +57,13 @@ def simulate(data, interval, periods, strategy):
 
     print(
         f"Coinbase account balance {coinbase_account['balance']} {coinbase_account['currency']}")
+
+    trading.single_run(interval)
+
+
+def simulate(data, interval, periods, strategy):
+    trading = TradingEngine(data['url'], data['key'], data['b64secret'], data['passphrase'],
+                            base_currency, max_buy_products, buy_amount, strategy, limit_products)
 
     trading.simulate_period(interval, periods)
 
@@ -66,8 +75,13 @@ if __name__ == "__main__":
         data = json.load(config_file)
 
     if arguments["simulate"]:
-        simulate(data, int(arguments["--interval"]), int(arguments["--periods"]), strategy_from_option(arguments["--strategy"]))
-
+        simulate(data, int(arguments["--interval"]), int(
+            arguments["--periods"]), strategy_from_option(arguments["--strategy"]))
+    elif arguments["run"]:
+        run(data, int(arguments["--interval"]),
+            strategy_from_option(arguments["--strategy"]))
+    else:
+        raise RuntimeError("Unknown mode")
 
 #    # FUCKED UP
 #    sorted_market_trend = trading.get_last_market_trends(
@@ -76,7 +90,7 @@ if __name__ == "__main__":
 #    ordering_products = dict(itertools.islice(
 #        sorted_market_trend.items(), max_products))#
 #    for pid in ordering_products:
-#        print(f"{pid}: {ordering_products[pid]:.2f}%")#
+#        print(f"{pid}: {ordering_products[pid]:.4f}%")#
 #    orders = trading.get_buy_quotes(
 #        buy_amount, ordering_products, tradable_products)
 #    trading.execute_orders(orders)

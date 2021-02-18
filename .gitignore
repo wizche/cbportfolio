@@ -2,3 +2,5 @@ config.json
 .vscode/
 *.pyc
 cache.json
+config.prod.json
+config.sandbox.json
