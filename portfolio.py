@@ -87,7 +87,7 @@ class Portfolio:
             for order in self.orders:
                 if order.product == product:
                     spent += o.buy_price_with_fee
-            v += f"{self.portfolio[product]:.2f} {product.base:<3} \t| spent {spent:.2f} {self.base_currency} \t| current value: {product_value:.2f} {self.base_currency} ({product_value/spent*100.0:.2f}%)\n"
+            v += f"{self.portfolio[product]:.4f} {product.base:<3} \t| spent {spent:.2f} {self.base_currency} \t| current value: {product_value:.2f} {self.base_currency} ({product_value/spent*100.0:.2f}%)\n"
             total += product_value
 
         v += f"Total spent: {self.get_total_spent():.2f} {self.base_currency} across {len(self.orders)} orders\n"
