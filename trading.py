@@ -5,11 +5,13 @@ import sys
 import json
 import os
 import random
+import time
 from datetime import datetime, timedelta
 import logging
 
 from portfolio import Order, Portfolio, Product
 from typing import Dict, List
+
 
 class Strategy(enum.Enum):
     TopGainers = 1
@@ -44,8 +46,13 @@ class PriceTrackerWsClient(cbpro.WebsocketClient):
 class TradingEngine:
     def __init__(self, api_url, key, secret, passphrase, base_currency, buy_amount, strategy, limit_products):
         self.public_client = cbpro.PublicClient()
-        self.auth_client = cbpro.AuthenticatedClient(key, secret, passphrase,
+        if key is not None and key.strip() != "":
+            self.auth_client = cbpro.AuthenticatedClient(key, secret, passphrase,
                                                      api_url=api_url)
+        else:
+            # this will break when executing orders/get account
+            self.auth_client = None
+
         self.base_currency = base_currency
         self.buy_amount = buy_amount
         self.strategy = strategy
@@ -100,7 +107,7 @@ class TradingEngine:
             else:
                 reverse = False
                 open(strategy_file, 'a').close()
-            
+
         print(f"Strategy reverse flag {reverse}")
         # sort by gain
         sorted_list = sorted(market_trend.items(),
@@ -141,22 +148,13 @@ class TradingEngine:
                     untouched = False
             if untouched:
                 break
-        #print(orders)
+        # print(orders)
         # lets truncate all orders to the right quote increment
         for p in orders:
-            orders[p] = self.round_to_increment(orders[p], float(tradable_products[p]["quote_increment"]))
+            orders[p] = self.round_to_increment(
+                orders[p], float(tradable_products[p]["quote_increment"]))
 
         return orders
-
-    def execute_orders(self, orders):
-        exec_orders = []
-        for o in orders:
-            print(f"Executing order for {o}: {orders[o]} {self.base_currency}")
-            order = self.auth_client.place_market_order(
-                product_id=o, side='buy', funds=orders[o])
-            print(order)
-            exec_orders.append(order)
-        return exec_orders
 
     def ticks_contains_date(self, tickers, expected_date):
         for t in tickers:
@@ -176,48 +174,72 @@ class TradingEngine:
             with open(cache_file, "r") as f:
                 self.tickers_cache = json.loads(f.read())
 
-        for product in products:
-            p = product.id
+        days = (end.date()-begin.date()).days
+        days_threshold = 280
+        done = False
+        begin = begin.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = end.replace(hour=0, minute=0, second=0, microsecond=0)
+        real_begin = begin
+        real_end = end
+
+        if days > days_threshold:
             print(
-                f"Lookup {p} historical data {begin.isoformat()}-{end.isoformat()}")
-            begin = begin.replace(hour=0, minute=0, second=0, microsecond=0)
-            end = end.replace(hour=0, minute=0, second=0, microsecond=0)
+                f"Too many days requested ({days}), splitting historic rates requests")
 
-            if p not in self.tickers_cache:
-                #print(f"Product {p} not in self.tickers_cache!")
-                self.tickers_cache[p] = {}
+        while not done:
+            if days > days_threshold:
+                real_end = real_begin + timedelta(days=days_threshold)
+                if real_end > datetime.today():
+                    real_end = datetime.today()
+                    done = True
             else:
-                begin_ts = str(begin.timestamp())
-                end_ts = str(end.timestamp())
-                if begin_ts in self.tickers_cache[p] and end_ts in self.tickers_cache[p]:
-                    print(f"Product {p} already in cache!")
-                    continue
+                done = True
+
+            for product in products:
+                p = product.id
+                print(
+                    f"Lookup {p} historical data {real_begin.isoformat()}-{real_end.isoformat()}")
+
+                if p not in self.tickers_cache:
+                    #print(f"Product {p} not in self.tickers_cache!")
+                    self.tickers_cache[p] = {}
                 else:
-                    pass
-                    #print(f"Missing timestamps for {p} {begin_ts} - {end_ts}")
-                    # print(cache[p])
+                    begin_ts = str(real_begin.timestamp())
+                    end_ts = str(real_end.timestamp())
+                    if begin_ts in self.tickers_cache[p] and end_ts in self.tickers_cache[p]:
+                        #print(f"Product {p} already in cache!")
+                        continue
+                    else:
+                        pass
+                        #print(f"Missing timestamps for {p} {begin_ts} - {end_ts}")
 
-            tickers = self.public_client.get_product_historic_rates(
-                p, start=begin, end=end, granularity=86400)
+                tickers = self.public_client.get_product_historic_rates(
+                    p, start=real_begin, end=real_end, granularity=86400)
 
-            if not self.ticks_contains_date(tickers, begin) or not self.ticks_contains_date(tickers, end):
-                print(f"Incomplete historical data for {p}")
+                if not self.ticks_contains_date(tickers, real_begin) or not self.ticks_contains_date(tickers, real_end):
+                    print(f"Incomplete historical data for {p}")
+                    # print(tickers)
 
-            for t in tickers:
-                try:
-                    dt = datetime.fromtimestamp(int(t[0]))
-                    dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-                    timestamp = str(dt.timestamp())
-                    self.tickers_cache[p][timestamp] = {
-                        'low': t[1],
-                        'high': t[2],
-                        'open': t[3],
-                        'close': t[4],
-                        'volume': t[5],
-                    }
-                except:
-                    print(t)
+                for t in tickers:
+                    try:
+                        dt = datetime.fromtimestamp(int(t[0]))
+                        dt = dt.replace(hour=0, minute=0,
+                                        second=0, microsecond=0)
+                        timestamp = str(dt.timestamp())
+                        self.tickers_cache[p][timestamp] = {
+                            'low': t[1],
+                            'high': t[2],
+                            'open': t[3],
+                            'close': t[4],
+                            'volume': t[5],
+                        }
+                    except:
+                        print("Failed to parse ticker")
+                        print(tickers)
 
+            # next chunk
+            real_begin = real_end
+            time.sleep(1)
         with open(cache_file, "w") as f:
             f.write(json.dumps(self.tickers_cache))
         # print(cache)
@@ -230,7 +252,8 @@ class TradingEngine:
         return math.trunc(value * factor) / factor
 
     def single_run(self, interval: int):
-        print(f"**** Executing run {datetime.now()} - {self.buy_amount} {self.base_currency} / {interval} days interval / {self.limit_products} limit")
+        print(
+            f"**** Executing run {datetime.now()} - {self.buy_amount} {self.base_currency} / {interval} days interval / {self.limit_products} limit")
         begin = datetime.today() - timedelta(days=interval)
         begin = begin.replace(hour=0, minute=0, second=0, microsecond=0)
         end = datetime.today()
@@ -239,7 +262,7 @@ class TradingEngine:
         tradable_products = self.get_tradable_products()
         print(f"Found {len(tradable_products)} tradable products")
         self.prepare_data(tradable_products, begin, end)
-        trends = self.get_last_market_trends(tradable_products, begin, end)  
+        trends = self.get_last_market_trends(tradable_products, begin, end)
         ordering_products = self.get_buy_quotes(trends, tradable_products)
 
         print("Trends:")
@@ -249,10 +272,11 @@ class TradingEngine:
 
         print("\nExecuting orders:")
         print("-------")
-        #print(tradable_products)
+        # print(tradable_products)
         for p in ordering_products:
             print(f"Executing {p.id} order {ordering_products[p]} {p.quote}")
-            order = self.auth_client.place_market_order(p.id, side="buy", funds=ordering_products[p])
+            order = self.auth_client.place_market_order(
+                p.id, side="buy", funds=ordering_products[p])
             if "id" in order:
                 print(f"Order {order['id']} confirmed!")
             else:

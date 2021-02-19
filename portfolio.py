@@ -86,10 +86,10 @@ class Portfolio:
             spent = 0.0
             for order in self.orders:
                 if order.product == product:
-                    spent += o.buy_price_with_fee
+                    spent += order.buy_price_with_fee
             v += f"{self.portfolio[product]:.4f} {product.base:<3} \t| spent {spent:.4f} {self.base_currency} \t| current value: {product_value:.4f} {self.base_currency} ({product_value/spent*100.0:.4f}%)\n"
             total += product_value
 
         v += f"Total spent: {self.get_total_spent():.4f} {self.base_currency} across {len(self.orders)} orders\n"
-        v += f"Total value: {total:.4f} {self.base_currency} | {total/self.get_total_spent()*100.0:.4f} % gain"
+        v += f"Current worth: {total:.4f} {self.base_currency} | {total/self.get_total_spent()*100.0:.4f} % gain"
         return v
