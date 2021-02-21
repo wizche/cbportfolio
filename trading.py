@@ -171,7 +171,12 @@ class TradingEngine:
             else:
                 done = True
 
+            sleep_interval = 0
             for product in products:
+                sleep_interval += 1
+                if sleep_interval % 10 == 0:
+                    time.sleep(1)
+
                 p = product.id
                 print(
                     f"Lookup {p} historical data {real_begin.isoformat()}-{real_end.isoformat()}")
@@ -303,6 +308,7 @@ class TradingEngine:
         print(self.portfolio.summary(self.tickers_cache))
         print(
             f"Strategy used: {self.strategy.name} across last {periods} periods of {trading_interval_days} days each")
+        return self.portfolio.gain
 
     def execute(self, order):
         pass

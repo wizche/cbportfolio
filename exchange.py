@@ -81,10 +81,30 @@ class CoinbaseExchange:
 
 class KrakenExchange:
     def __init__(self, key_data):
-        pass
+
+        key = key_data['key']
+        if key is not None and key.strip() != "":
+            api = krakenex.API(key_data['key'], key_data['b64secret'])
+        else:
+            api = krakenex.API()
+        self.kraken = KrakenAPI(api)
 
     def get_historical(self, product_id, begin, end):
         pass
 
     def place_market_order(self, product_id, quote_amount):
         pass
+
+    def get_account(self, base_currency):
+        pass
+
+    def get_tradable_products(self, base_currency) -> Dict[str, Dict]:
+        products = self.kraken.get_tradable_asset_pairs()
+        for index, row in products.iterrows():
+            print(f"{index}: {row['ordermin']}")
+            print(row)
+        tradable_products = {}
+        for product in products:
+            if not product['trading_disabled'] and product['status'] == "online" and product['quote_currency'] == base_currency:
+                tradable_products[Product.build(product['id'])] = product
+        return tradable_products

@@ -2,7 +2,7 @@
 """Trader.
 
 Usage:
-  trader.py simulate [--amount=<amount>] [--interval=<interval>] [--periods=<periods>] [--strategy=<strategy>] [--limit=<limit>]
+  trader.py simulate [--tune] [--amount=<amount>] [--interval=<interval>] [--periods=<periods>] [--strategy=<strategy>] [--limit=<limit>] [--config=<configfile>]
   trader.py run [--amount=<amount>] [--config=<configfile>] [--interval=<interval>] [--strategy=<strategy>] [--limit=<limit>]
   trader.py (-h | --help)
   trader.py --version
@@ -15,13 +15,13 @@ Options:
   --strategy=<strategy>     Strategy (gainer|loser|mixed) [default: gainer]
   --config=<configfile>     JSON API config file [default: config.sandbox.json]
   --amount=<amount>         Amount to buy [default: 50]
+  --tune                    Generate gains for many different parameters
   --limit=<limit>           Max products to buy, -1 all of them [default: 10]
 """
 
 import datetime
 import itertools
 import json
-import random
 import sys
 
 from docopt import docopt
@@ -36,32 +36,52 @@ base_currency = "EUR"
 # buy_amount = 0.0012 # ~ 50 EUR -> BTC
 
 
-def simulate(data, buy_amount, interval, periods, strategy, limit_products):
-    trading = TradingEngine(data, base_currency,
+def simulate(data, buy_amount, interval, periods, strategy, limit_products, tune=False):
+
+    if tune:
+        limits = [2, 5, 8, 10, 15]
+        intervals = [3, 5, 7, 10, 15, 20, 30, 40]
+        strategies = [Strategy.TopGainers, Strategy.TopLosers, Strategy.Mixed]
+        res = {}
+        for strategy in strategies:
+            res[strategy] = {}
+            for limit in limits:
+                res[strategy][limit] = {}
+                for interval in intervals:
+                    trading = TradingEngine(data, base_currency,
+                                    buy_amount, strategy, limit)
+                    gain = trading.simulate_period(interval, periods)
+                    res[strategy][limit][interval] = gain
+
+        for i in res:
+            print(f"{i}: {res[i]}")
+
+    else:
+        trading = TradingEngine(data, base_currency,
                             buy_amount, strategy, limit_products)
+        gain = trading.simulate_period(interval, periods)
 
-    trading.simulate_period(interval, periods)
+        layout = make_layout()
 
-    layout = make_layout()
+        layout["header"].update(Header(periods, interval))
+        layout["orders"].update(make_order_grid(trading.portfolio.orders))
+        layout["summary"].update(make_summary(
+            trading.portfolio, trading.tickers_cache, base_currency))
+        layout["portfoliolayout"].update(make_portfolio(
+            trading.portfolio, trading.tickers_cache))
+        layout["gainlayout"].update(
+            make_gain(trading.portfolio, trading.tickers_cache))
+        layout["footer"].update(make_footer(
+            strategy, buy_amount, base_currency, limit_products))
 
-    layout["header"].update(Header(periods, interval))
-    layout["orders"].update(make_order_grid(trading.portfolio.orders))
-    layout["summary"].update(make_summary(
-        trading.portfolio, trading.tickers_cache, base_currency))
-    layout["portfoliolayout"].update(make_portfolio(
-        trading.portfolio, trading.tickers_cache))
-    layout["gainlayout"].update(
-        make_gain(trading.portfolio, trading.tickers_cache))
-    layout["footer"].update(make_footer(
-        strategy, buy_amount, base_currency, limit_products))
-    # print(layout)
-    from time import sleep
+        # print(layout)
+        from time import sleep
 
-    from rich.live import Live
+        from rich.live import Live
 
-    with Live(layout, refresh_per_second=10, screen=True):
-        while True:
-            sleep(0.5)
+        with Live(layout, refresh_per_second=10, screen=True):
+            while True:
+                sleep(0.5)
 
 
 def strategy_from_option(strategy):
@@ -89,7 +109,7 @@ if __name__ == "__main__":
 
     if arguments["simulate"]:
         simulate(data, int(arguments["--amount"]), int(arguments["--interval"]), int(
-            arguments["--periods"]), strategy_from_option(arguments["--strategy"]), int(arguments["--limit"]))
+            arguments["--periods"]), strategy_from_option(arguments["--strategy"]), int(arguments["--limit"]), bool(arguments["--tune"]))
     elif arguments["run"]:
         run(data, int(arguments["--amount"]), int(arguments["--interval"]),
             strategy_from_option(arguments["--strategy"]), int(arguments["--limit"]))
