@@ -1,4 +1,4 @@
-#!/bin/python3
+#!/usr/bin/env python3
 """Trader.
 
 Usage:
@@ -91,6 +91,10 @@ def strategy_from_option(strategy):
         return Strategy.TopLosers
     elif strategy == "mixed":
         return Strategy.Mixed
+    elif strategy == "topvolume":
+        return Strategy.TopVolume
+    elif strategy == "lessvolume":
+        return Strategy.LessVolume
     else:
         raise RuntimeError(f"Unknown strategy {strategy}")
 
@@ -99,6 +103,7 @@ def run(data, buy_amount, interval, strategy, limit_products):
     trading = TradingEngine(data,
                             base_currency, buy_amount, strategy, limit_products)
     trading.single_run(interval)
+    print(f"Run finished at {datetime.datetime.now()}")
 
 
 if __name__ == "__main__":

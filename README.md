@@ -9,7 +9,9 @@ Basically the algorithm does the following:
 5) Based on the specified strategy it select the products to buy
     * `gainer`: select the top gaining products
     * `loser`: select the top loosing products
-    * `mixed`: alternate `gainer` and `loser` at every run
+    * `topvolume`: select products with most market volume
+    * `lessvolume`: select products with less market volume
+    * `mixed`: alternate all strategy at every run
 6) Divide the given amount (`--amount`) based on the gain/loss
 7) Execute trading orders
 
@@ -76,3 +78,10 @@ Failed to execute order: {'message': 'Product not found'}
 Executing OMG-EUR order 2.0278 EUR
 Failed to execute order: {'message': 'Product not found'}
 ```
+
+The simplest method to run this in a recurrent fashion is via cron:
+```
+0 12 * * 6 ( cd /home/pi/coinbase/ ; ./trader.py run --strategy=mixed --amount=60 --interval=7 --limit=15 --config=config.sandbox.json >> /home/pi/coinbase.log 2>&1 )
+```
+
+With the above crontab expression we run the `./trader.py` every saturaday at 12:00.

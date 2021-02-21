@@ -14,9 +14,11 @@ from typing import Dict, List
 
 
 class Strategy(enum.Enum):
-    TopGainers = 1
-    TopLosers = 2
-    Mixed = 3
+    TopGainers = 0
+    TopLosers = 1
+    TopVolume = 2
+    LessVolume = 3
+    Mixed = 4
 
 
 # class PriceTrackerWsClient(cbpro.WebsocketClient):
@@ -54,8 +56,35 @@ class TradingEngine:
         self.last_strategy_flag = True
         self.limit_products = limit_products
 
+    def get_concrete_strategy(self):
+        strategy = Strategy.Mixed
+        if self.strategy == Strategy.Mixed:
+            strategy_file = "strategy.lock"
+            if os.path.exists(strategy_file):
+                try:
+                    with open(strategy_file, "r") as f:
+                        curr = int(f.read().strip())
+                        while strategy == Strategy.Mixed:
+                            curr += 1
+                            strategy = Strategy(curr % len(Strategy))
+                except:
+                    strategy = Strategy.TopGainers
+                    print(
+                        f"Unable to parse last strategy, fallback to default {strategy}")
+            else:
+                strategy = Strategy.TopGainers
+
+            with open(strategy_file, "w") as f:
+                f.write(str(strategy.value))
+            return strategy
+        else:
+            return self.strategy
+
     def get_last_market_trends(self, tradable_products, start, end):
         market_trend = {}
+
+        local_strategy = self.get_concrete_strategy()
+
         for _, product in enumerate(tradable_products):
             pid = product.id
             sts = str(start.timestamp())
@@ -68,29 +97,26 @@ class TradingEngine:
 
             now = self.tickers_cache[pid][ets]
             old = self.tickers_cache[pid][sts]
-            gain = (now["close"]-old["close"])/now["close"] * 100.0
-            market_trend[product] = gain
-
-        if self.strategy == Strategy.TopGainers:
-            reverse = True
-        elif self.strategy == Strategy.TopLosers:
-            reverse = False
-        else:
-            strategy_file = "strategy.lock"
-            if os.path.exists(strategy_file):
-                reverse = True
-                os.remove(strategy_file)
+            if local_strategy == Strategy.TopVolume or local_strategy == Strategy.LessVolume:
+                market_trend[product] = (
+                    now["volume"]-old["volume"])/now["volume"] * 100.0
             else:
-                reverse = False
-                open(strategy_file, 'a').close()
+                gain = (now["close"]-old["close"])/now["close"] * 100.0
+                market_trend[product] = gain
 
-        print(f"Strategy reverse flag {reverse}")
+        if local_strategy == Strategy.TopGainers or local_strategy == Strategy.TopVolume:
+            reverse = True
+        elif local_strategy == Strategy.TopLosers or local_strategy == Strategy.LessVolume:
+            reverse = False
+
         # sort by gain
         sorted_list = sorted(market_trend.items(),
                              key=lambda item: item[1], reverse=reverse)
         if self.limit_products > 0 and len(market_trend) >= self.limit_products:
             sorted_list = sorted_list[:self.limit_products]
         sorted_market_trend = dict(sorted_list)
+        print(f"Strategy {local_strategy}, trends:")
+        print(sorted_market_trend)
         return sorted_market_trend
 
     def get_buy_quotes(self, selected_prods, tradable_products):
