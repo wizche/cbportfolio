@@ -1,3 +1,4 @@
 cbpro
 docopt
 rich
+pykrakenapi

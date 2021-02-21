@@ -1,4 +1,3 @@
-import cbpro
 import enum
 import math
 import sys
@@ -10,6 +9,7 @@ from datetime import datetime, timedelta
 import logging
 
 from portfolio import Order, Portfolio, Product
+from exchange import Exchange
 from typing import Dict, List
 
 
@@ -19,40 +19,33 @@ class Strategy(enum.Enum):
     Mixed = 3
 
 
-class PriceTrackerWsClient(cbpro.WebsocketClient):
-    def start(self, url, products):
-        self.url = url
-        self.products = list(products)
-        self.channels = ['ticker']
-        self.prices = {}
-        print(f"Subscribing to {len(self.products)} products tickers")
-        super().start()
-
-    def on_message(self, msg):
-        if "price" in msg:
-            self.prices[msg['product_id']] = 1/float(msg['price'])
-            #print(f"{msg['product_id']}: {self.prices[msg['product_id']]:.5f}")
-
-    def on_close(self):
-        print("-- Goodbye! --")
-
-    def get_price(self, product_id):
-        if product_id in self.prices:
-            return self.prices[product_id]
-        else:
-            return -1
+# class PriceTrackerWsClient(cbpro.WebsocketClient):
+#    def start(self, url, products):
+#        self.url = url
+#        self.products = list(products)
+#        self.channels = ['ticker']
+#        self.prices = {}
+#        print(f"Subscribing to {len(self.products)} products tickers")
+#        super().start()
+#
+#    def on_message(self, msg):
+#        if "price" in msg:
+#            self.prices[msg['product_id']] = 1/float(msg['price'])
+#            #print(f"{msg['product_id']}: {self.prices[msg['product_id']]:.5f}")
+#
+#    def on_close(self):
+#        print("-- Goodbye! --")
+#
+#    def get_price(self, product_id):
+#        if product_id in self.prices:
+#            return self.prices[product_id]
+#        else:
+#            return -1
 
 
 class TradingEngine:
-    def __init__(self, api_url, key, secret, passphrase, base_currency, buy_amount, strategy, limit_products):
-        self.public_client = cbpro.PublicClient()
-        if key is not None and key.strip() != "":
-            self.auth_client = cbpro.AuthenticatedClient(key, secret, passphrase,
-                                                     api_url=api_url)
-        else:
-            # this will break when executing orders/get account
-            self.auth_client = None
-
+    def __init__(self, key_data, base_currency, buy_amount, strategy, limit_products):
+        self.exchange = Exchange.build(key_data)
         self.base_currency = base_currency
         self.buy_amount = buy_amount
         self.strategy = strategy
@@ -60,23 +53,6 @@ class TradingEngine:
         self.tickers_cache = {}
         self.last_strategy_flag = True
         self.limit_products = limit_products
-
-    def get_account(self):
-        coinbase_accounts = self.auth_client.get_coinbase_accounts()
-        coinbase_account = None
-        for acc in coinbase_accounts:
-            if acc['currency'] == self.base_currency:
-                coinbase_account = acc
-                break
-        return coinbase_account
-
-    def get_tradable_products(self) -> Dict[str, Dict]:
-        products = self.public_client.get_products()
-        tradable_products = {}
-        for product in products:
-            if not product['trading_disabled'] and product['status'] == "online" and product['quote_currency'] == self.base_currency:
-                tradable_products[Product.build(product['id'])] = product
-        return tradable_products
 
     def get_last_market_trends(self, tradable_products, start, end):
         market_trend = {}
@@ -213,8 +189,7 @@ class TradingEngine:
                         pass
                         #print(f"Missing timestamps for {p} {begin_ts} - {end_ts}")
 
-                tickers = self.public_client.get_product_historic_rates(
-                    p, start=real_begin, end=real_end, granularity=86400)
+                tickers = self.exchange.get_historical(p, real_begin, real_end)
 
                 if not self.ticks_contains_date(tickers, real_begin) or not self.ticks_contains_date(tickers, real_end):
                     print(f"Incomplete historical data for {p}")
@@ -252,6 +227,16 @@ class TradingEngine:
         return math.trunc(value * factor) / factor
 
     def single_run(self, interval: int):
+        coinbase_account = self.exchange.get_account(self.base_currency)
+
+        if coinbase_account is None:
+            print(
+                f"Couldnt find a coinbase account with the desired currency {self.base_currency}")
+            sys.exit(0)
+
+        print(
+            f"Coinbase account balance {coinbase_account['balance']} {coinbase_account['currency']}")
+
         print(
             f"**** Executing run {datetime.now()} - {self.buy_amount} {self.base_currency} / {interval} days interval / {self.limit_products} limit")
         begin = datetime.today() - timedelta(days=interval)
@@ -259,7 +244,8 @@ class TradingEngine:
         end = datetime.today()
         end = end.replace(hour=0, minute=0, second=0, microsecond=0)
 
-        tradable_products = self.get_tradable_products()
+        tradable_products = self.exchange.get_tradable_products(
+            self.base_currency)
         print(f"Found {len(tradable_products)} tradable products")
         self.prepare_data(tradable_products, begin, end)
         trends = self.get_last_market_trends(tradable_products, begin, end)
@@ -275,8 +261,8 @@ class TradingEngine:
         # print(tradable_products)
         for p in ordering_products:
             print(f"Executing {p.id} order {ordering_products[p]} {p.quote}")
-            order = self.auth_client.place_market_order(
-                p.id, side="buy", funds=ordering_products[p])
+            order = self.exchange.place_market_order(
+                p.id, ordering_products[p])
             if "id" in order:
                 print(f"Order {order['id']} confirmed!")
             else:
@@ -287,7 +273,8 @@ class TradingEngine:
 
         self.trading_interval_days = trading_interval_days
 
-        tradable_products = self.get_tradable_products()
+        tradable_products = self.exchange.get_tradable_products(
+            self.base_currency)
         print(f"Found {len(tradable_products)} tradable products")
 
         self.prepare_data(tradable_products, begin, datetime.today())
