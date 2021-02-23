@@ -46,7 +46,7 @@ Explore the options with `./trader.py simulate --help` or just run it straight w
 
 ## Trading
 When running `./trader.py run` make sure you specify the right `--config` file.
-Orders gets executed automatically, **please use a sandbox API if you just want to thes this out!**.
+Orders gets executed automatically, **please use a sandbox API if you just want to test this out!**.
 
 > The sandbox endpoint only offer a very small subset of markets, thats why executing orders will mostly fail with `Product not found` error.
 
