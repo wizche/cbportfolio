@@ -63,7 +63,7 @@ class CoinbaseExchange:
         products = self.public_client.get_products()
         tradable_products = {}
         for product in products:
-            if not product['trading_disabled'] and product['status'] == "online" and product['quote_currency'] == base_currency:
+            if not product['trading_disabled'] and product['status'] == "online" and product['quote_currency'] == base_currency and not product['post_only'] and not product['limit_only'] and not product['cancel_only']:
                 tradable_products[Product.build(product['id'])] = product
         return tradable_products
 
@@ -72,7 +72,6 @@ class CoinbaseExchange:
                     product_id, start=begin, end=end, granularity=86400)
         return tickers
             
-
     def place_market_order(self, product_id: str, quote_amount: float):
         order = self.auth_client.place_market_order(
                 product_id, side="buy", funds=quote_amount)
