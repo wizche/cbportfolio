@@ -15,6 +15,8 @@ Basically the algorithm does the following:
 6) Divide the given amount (`--amount`) based on the gain/loss
 7) Execute trading orders
 
+> When running the mixed strategy, at every run the latest strategy is saved to a `strategy.lock` file.
+
 ## Getting started
 
 In order to generate **real** orders and access account balance you need an API key for Coinbase Pro. You can get one at https://pro.coinbase.com/profile/api. 
@@ -22,10 +24,11 @@ Please use the config template `config.template.json` to create a new `config.js
 
 ```json
 {
+    "type": "Exchange type: coinbase | kraken",
     "url": "API endpoint",
     "key": "ID of API key",
     "passphrase": "passphrase",
-    "b64secret": "Base64 encoded secret"
+    "b64secret": "base64 encoded secret"
 }
 ```
 
