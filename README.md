@@ -17,6 +17,8 @@ Basically the algorithm does the following:
 
 > When running the mixed strategy, at every run the latest strategy is saved to a `strategy.lock` file.
 
+> **Disclaimer:** This software is for educational purposes only. Please be carefull when trading with real money. The author assume **no responsibility** for your trading results! Use this at your own risk!
+
 ## Getting started
 
 In order to generate **real** orders and access account balance you need an API key for Coinbase Pro. You can get one at https://pro.coinbase.com/profile/api. 
@@ -88,6 +90,3 @@ The simplest method to run this in a recurrent fashion is via cron:
 ```
 
 With the above crontab expression we run the `./trader.py` every saturaday at 12:00.
-
-## Disclaimer
-Please be carefull when trading with real money. Use this at your own risk!
