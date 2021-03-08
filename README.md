@@ -1,5 +1,5 @@
 # Coinbase Diversified Portfolio
-This project consist of a simple "trading" application that perform **recurring** purchases of crypto products from Coinbase Pro based on simple strategies.
+This project consist of a simple "trading" application that perform **recurring** orders of crypto products from Coinbase Pro based on simple strategies.
 
 Basically the algorithm does the following:
 1) Gets all tradable product for the given market (e.g. `EUR`)
@@ -11,7 +11,7 @@ Basically the algorithm does the following:
     * `loser`: select the top loosing products
     * `topvolume`: select products with most market volume
     * `lessvolume`: select products with less market volume
-    * `mixed`: alternate all strategy at every run
+    * `mixed`: alternate strategies at every run
 6) Divide the given amount (`--amount`) based on the gain/loss
 7) Execute trading orders
 
@@ -88,3 +88,6 @@ The simplest method to run this in a recurrent fashion is via cron:
 ```
 
 With the above crontab expression we run the `./trader.py` every saturaday at 12:00.
+
+## Disclaimer
+Please be carefull when trading with real money. Use this at your own risk!
