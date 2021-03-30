@@ -21,7 +21,7 @@ Basically the algorithm does the following:
 
 ## Getting started
 
-In order to generate **real** orders and access account balance you need an API key for Coinbase Pro. You can get one at https://pro.coinbase.com/profile/api. 
+In order to generate **real** orders and access account balance you need an API key for Coinbase Pro. You can get one at https://pro.coinbase.com/profile/api (provide *view* and *trade* permissions).
 Please use the config template `config.template.json` to create a new `config.json` with your API info.
 
 ```json
@@ -34,11 +34,23 @@ Please use the config template `config.template.json` to create a new `config.js
 }
 ```
 
-If you only want to simulate, you dont need anything (using public API endpoint).
+Coinbase api url is <https://api.pro.coinbase.com>.
+
+If you only want to simulate, you dont need a specific api key, simply use following
+config file (example for coinbase):
+```json
+{
+    "type": "coinbase",
+    "url": "https://api.pro.coinbase.com",
+    "key": "",
+    "passphrase": "",
+    "b64secret": ""
+}
+```
 
 Please install dependencies via `requirements.txt`:
 ```bash
-pip3 install -r requirements.txt
+pip3 install -r requirements.txt --user
 ```
 
 ## Simulation
