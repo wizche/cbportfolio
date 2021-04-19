@@ -95,6 +95,8 @@ def strategy_from_option(strategy):
         return Strategy.TopVolume
     elif strategy == "lessvolume":
         return Strategy.LessVolume
+    elif strategy == "topmarketcap":
+        return Strategy.TopMarketCap
     else:
         raise RuntimeError(f"Unknown strategy {strategy}")
 
@@ -103,6 +105,8 @@ def run(data, buy_amount, interval, strategy, limit_products):
     trading = TradingEngine(data,
                             base_currency, buy_amount, strategy, limit_products)
     trading.single_run(interval)
+
+    print(f"\nStrategy {strategy}")
     print(f"Run finished at {datetime.datetime.now()}")
 
 

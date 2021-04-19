@@ -7,6 +7,7 @@ import random
 import time
 from datetime import datetime, timedelta
 import logging
+import urllib.request
 
 from portfolio import Order, Portfolio, Product
 from exchange import Exchange
@@ -18,7 +19,8 @@ class Strategy(enum.Enum):
     TopLosers = 1
     TopVolume = 2
     LessVolume = 3
-    Mixed = 4
+    TopMarketCap = 4
+    Mixed = 5
 
 
 # class PriceTrackerWsClient(cbpro.WebsocketClient):
@@ -85,39 +87,64 @@ class TradingEngine:
 
         local_strategy = self.get_concrete_strategy()
 
-        for _, product in enumerate(tradable_products):
-            pid = product.id
-            sts = str(start.timestamp())
-            ets = str(end.timestamp())
+        if local_strategy == Strategy.TopMarketCap:
+            supported_currency = {}
+            for _, product in enumerate(tradable_products):
+                supported_currency[product.base.upper()] = product 
+            try:
+                if self.limit_products > 30:
+                    raise RuntimeError("Buying so many products doesnt make much sense")
+                marketcapapi = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=30&page=1&sparkline=false"
+                market_trend = {}
+                with urllib.request.urlopen(marketcapapi) as req:
+                    data = json.loads(req.read().decode())
+                    for coin in data:
+                        symbol = coin['symbol'].upper()
+                        if symbol in supported_currency:
+                            # we give all the same value so it buy for all the same amount
+                            market_trend[supported_currency[symbol]] = 1.0
+                            print(f"Market cap {symbol}: {coin['market_cap']} USD")
+                        if self.limit_products > 0 and len(market_trend) >= self.limit_products:
+                            #print(f"Reached limit!")
+                            print()
+                            break
+                return market_trend
+            except Exception as ex:
+                print(f"Failed to retrieve top market capital from coingecko!")
+                print(str(ex))
+                return {}
+        else:
+            for _, product in enumerate(tradable_products):
+                pid = product.id
+                sts = str(start.timestamp())
+                ets = str(end.timestamp())
 
-            if sts not in self.tickers_cache[pid] or ets not in self.tickers_cache[pid]:
-                print(
-                    f"Unable to compute trends for {pid}, missing ticker informations {sts}-{ets}")
-                continue
+                if sts not in self.tickers_cache[pid] or ets not in self.tickers_cache[pid]:
+                    print(
+                        f"Unable to compute trends for {pid}, missing ticker informations {sts}-{ets}")
+                    continue
 
-            now = self.tickers_cache[pid][ets]
-            old = self.tickers_cache[pid][sts]
-            if local_strategy == Strategy.TopVolume or local_strategy == Strategy.LessVolume:
-                market_trend[product] = (
-                    now["volume"]-old["volume"])/now["volume"] * 100.0
-            else:
-                gain = (now["close"]-old["close"])/now["close"] * 100.0
-                market_trend[product] = gain
+                now = self.tickers_cache[pid][ets]
+                old = self.tickers_cache[pid][sts]
+                if local_strategy == Strategy.TopVolume or local_strategy == Strategy.LessVolume:
+                    market_trend[product] = (
+                        now["volume"]-old["volume"])/now["volume"] * 100.0
+                else:
+                    gain = (now["close"]-old["close"])/now["close"] * 100.0
+                    market_trend[product] = gain
 
-        if local_strategy == Strategy.TopGainers or local_strategy == Strategy.TopVolume:
-            reverse = True
-        elif local_strategy == Strategy.TopLosers or local_strategy == Strategy.LessVolume:
-            reverse = False
+            if local_strategy == Strategy.TopGainers or local_strategy == Strategy.TopVolume:
+                reverse = True
+            elif local_strategy == Strategy.TopLosers or local_strategy == Strategy.LessVolume:
+                reverse = False
 
-        # sort by gain
-        sorted_list = sorted(market_trend.items(),
-                             key=lambda item: item[1], reverse=reverse)
-        if self.limit_products > 0 and len(market_trend) >= self.limit_products:
-            sorted_list = sorted_list[:self.limit_products]
-        sorted_market_trend = dict(sorted_list)
-        print(f"Strategy {local_strategy}, trends:")
-        print(sorted_market_trend)
-        return sorted_market_trend
+            # sort by gain
+            sorted_list = sorted(market_trend.items(),
+                                key=lambda item: item[1], reverse=reverse)
+            if self.limit_products > 0 and len(market_trend) >= self.limit_products:
+                sorted_list = sorted_list[:self.limit_products]
+            sorted_market_trend = dict(sorted_list)
+            return sorted_market_trend
 
     def get_buy_quotes(self, selected_prods, tradable_products):
         orders = {}
