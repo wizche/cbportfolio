@@ -1,4 +1,4 @@
 cbpro
 docopt
-rich
+rich==9.13.0
 pykrakenapi

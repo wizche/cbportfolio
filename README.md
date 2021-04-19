@@ -1,5 +1,5 @@
 # Coinbase Diversified Portfolio
-This project consist of a simple "trading" application that perform **recurring** purchases of crypto products from Coinbase Pro based on simple strategies.
+This project consist of a simple "trading" application that perform **recurring** orders of crypto products from Coinbase Pro based on simple strategies.
 
 Basically the algorithm does the following:
 1) Gets all tradable product for the given market (e.g. `EUR`)
@@ -11,15 +11,17 @@ Basically the algorithm does the following:
     * `loser`: select the top loosing products
     * `topvolume`: select products with most market volume
     * `lessvolume`: select products with less market volume
-    * `mixed`: alternate all strategy at every run
+    * `mixed`: alternate strategies at every run
 6) Divide the given amount (`--amount`) based on the gain/loss
 7) Execute trading orders
 
 > When running the mixed strategy, at every run the latest strategy is saved to a `strategy.lock` file.
 
+> **Disclaimer:** This software is for educational purposes only. Please be carefull when trading with real money. The author assume **no responsibility** for your trading results! Use this at your own risk!
+
 ## Getting started
 
-In order to generate **real** orders and access account balance you need an API key for Coinbase Pro. You can get one at https://pro.coinbase.com/profile/api. 
+In order to generate **real** orders and access account balance you need an API key for Coinbase Pro. You can get one at https://pro.coinbase.com/profile/api (provide *view* and *trade* permissions).
 Please use the config template `config.template.json` to create a new `config.json` with your API info.
 
 ```json
@@ -32,11 +34,23 @@ Please use the config template `config.template.json` to create a new `config.js
 }
 ```
 
-If you only want to simulate, you dont need anything (using public API endpoint).
+Coinbase api url is <https://api.pro.coinbase.com>.
+
+If you only want to simulate, you dont need a specific api key, simply use following
+config file (example for coinbase):
+```json
+{
+    "type": "coinbase",
+    "url": "https://api.pro.coinbase.com",
+    "key": "",
+    "passphrase": "",
+    "b64secret": ""
+}
+```
 
 Please install dependencies via `requirements.txt`:
 ```bash
-pip3 install -r requirements.txt
+pip3 install -r requirements.txt --user
 ```
 
 ## Simulation
@@ -46,7 +60,7 @@ Explore the options with `./trader.py simulate --help` or just run it straight w
 
 ## Trading
 When running `./trader.py run` make sure you specify the right `--config` file.
-Orders gets executed automatically, **please use a sandbox API if you just want to thes this out!**.
+Orders gets executed automatically, **please use a sandbox API if you just want to test this out!**.
 
 > The sandbox endpoint only offer a very small subset of markets, thats why executing orders will mostly fail with `Product not found` error.
 
