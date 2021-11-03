@@ -325,6 +325,7 @@ class TradingEngine:
                 print(f"Order {order['id']} confirmed!")
             else:
                 print(f"Failed to execute order: {order}")
+            time.sleep(1)
 
     def simulate_period(self, trading_interval_days: int, periods: int):
         begin = datetime.today() - timedelta(days=(periods*trading_interval_days))

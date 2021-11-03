@@ -105,5 +105,5 @@ class KrakenExchange:
         tradable_products = {}
         for product in products:
             if not product['trading_disabled'] and product['status'] == "online" and product['quote_currency'] == base_currency:
-                tradable_products[Product.build(product['id'])] = product
+                tradable_products[Product.build(product['id'])] = product and not product['cancel_only'] and not product['post_only'] and not product['limit_only']
         return tradable_products
